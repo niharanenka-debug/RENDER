@@ -39,6 +39,16 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     user_id TEXT NOT NULL DEFAULT 'local'
                 );
+                
+                CREATE TABLE IF NOT EXISTS google_users (
+                    google_sub TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    name TEXT NOT NULL DEFAULT '',
+                    picture TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
                 """
             )
             # Existing installations are upgraded in place. Legacy rows retain the
@@ -162,3 +172,30 @@ class Database:
                 f"DELETE FROM {table} WHERE id=? AND user_id=?", (item_id, user_id)
             )
             return cursor.rowcount == 1
+    
+    def register_google_user(self, google_sub, email, name="", picture=""):
+        with self.conn() as connection:
+            connection.execute(
+                """
+                INSERT INTO google_users (google_sub, email, name, picture)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(google_sub) DO UPDATE SET
+                    email=excluded.email,
+                    name=excluded.name,
+                    picture=excluded.picture,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (google_sub, email, name, picture),
+            )
+        return f"google:{google_sub}"
+
+    def transfer_workspace(self, old_owner, new_owner):
+        if not old_owner or old_owner == new_owner:
+            return
+        with self.conn() as connection:
+            for table in self.TABLES:
+                connection.execute(
+                    f"UPDATE {table} SET user_id=? WHERE user_id=?",
+                    (new_owner, old_owner),
+                )
+
