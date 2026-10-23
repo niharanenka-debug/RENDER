@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b18">
+  <meta name="description" content="A focused AI study workspace for summaries, flashcards, quizzes, and more.">
+  <title>prep-Nerd.ai — Your study space</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">pN</div>
+        <div><div class="brand-name">prep-Nerd<span>.ai</span></div><div class="brand-caption">YOUR PERSONAL STUDY SPACE</div></div>
+      </div>
+      <div class="nav-label">Workspace</div>
+      <nav id="main-nav" class="main-nav" aria-label="Study modules"></nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-note"><span class="sparkle" aria-hidden="true">✦</span><div><strong>One source. Every tool.</strong><p>Your selected material follows you across the workspace.</p></div></div>
+        <div class="sidebar-version">PREP-NERD.AI <span>•</span> STUDY BETTER</div>
+      </div>
+    </aside>
+
+    <div class="content-column">
+      <header class="topbar">
+        <div class="mobile-brand"><div class="brand-mark" aria-hidden="true">pN</div><span>prep-Nerd<span class="brand-ai">.ai</span></span></div>
+        <div class="topbar-context"><span class="live-dot" aria-hidden="true"></span><span id="top-source-label">No active source</span></div>
+        <div class="topbar-right"><span id="ai-status" class="status-chip" role="status">Checking AI setup…</span><button id="mobile-nav-toggle" class="icon-button mobile-menu-button" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Toggle navigation"><span aria-hidden="true">☰</span></button></div>
+      </header>
+
+      <main id="main-content" class="main-content">
+        <section id="global-source" class="source-workspace" aria-labelledby="source-heading">
+          <div class="source-heading-row">
+            <div><div class="eyebrow">YOUR STUDY MATERIAL</div><h2 id="source-heading">Choose a source</h2><p class="source-subtitle">Add one source once—it powers every tool in your workspace.</p></div>
+            <div id="active-source-badge" class="active-badge" aria-live="polite"><span class="badge-dot"></span><span>No source selected</span></div>
+          </div>
+          <div class="source-grid">
+            <div class="source-create-card panel">
+              <div class="source-kind-tabs" role="tablist" aria-label="Choose source type">
+                <button class="source-kind-tab is-active" type="button" role="tab" aria-selected="true" data-source-kind="text"><span aria-hidden="true">✎</span> Paste text</button>
+                <button class="source-kind-tab" type="button" role="tab" aria-selected="false" data-source-kind="file"><span aria-hidden="true">↥</span> Upload file</button>
+                <button class="source-kind-tab" type="button" role="tab" aria-selected="false" data-source-kind="url"><span aria-hidden="true">↗</span> Web link</button>
+              </div>
+              <form id="source-form" novalidate>
+                <input type="hidden" id="source-kind" name="kind" value="text">
+                <div class="field-group"><label for="source-title">Source title <span class="optional">optional</span></label><input id="source-title" name="title" type="text" maxlength="180" placeholder="e.g. Cell biology — chapter 4" autocomplete="off"></div>
+                <div id="source-fields">
+                  <div class="field-group" data-kind-panel="text"><label for="source-text">Study material</label><textarea id="source-text" name="text" rows="5" placeholder="Paste your notes, a passage, or study guide here…"></textarea><div class="field-footnote"><span>Private to your study workspace</span><span id="text-count">0 characters</span></div></div>
+                  <div class="field-group hidden" data-kind-panel="file"><label for="source-file">Choose a document</label><div class="file-drop"><span class="upload-glyph" aria-hidden="true">↥</span><div><strong id="file-label">Drop a file here or browse</strong><p>PDF, DOCX, PPTX, Markdown or TXT • up to 20 MB</p></div><input id="source-file" name="file" type="file" accept=".pdf,.docx,.pptx,.md,.markdown,.txt,application/pdf,text/plain"></div><p id="file-error" class="field-error hidden" role="alert"></p></div>
+                  <div class="field-group hidden" data-kind-panel="url"><label for="source-url">Public page URL</label><input id="source-url" name="url" type="url" inputmode="url" placeholder="https://example.com/article"><p class="field-hint">Use a public HTTP or HTTPS page. We’ll add its contents as your active source.</p></div>
+                </div>
+                <div class="source-form-footer"><p class="source-replace-note"><span aria-hidden="true">⟳</span> A new source replaces the current source for all tools.</p><button id="source-submit" class="button button-primary" type="submit"><span class="button-icon" aria-hidden="true">＋</span> Add &amp; activate source</button></div>
+                <p id="source-form-error" class="field-error hidden" role="alert"></p>
+              </form>
+            </div>
+            <div class="source-side-column">
+              <section class="active-source-card panel" aria-labelledby="active-source-heading"><div class="card-heading"><div><div class="eyebrow">IN USE EVERYWHERE</div><h3 id="active-source-heading">Active source</h3></div><span class="source-state-icon" aria-hidden="true">◈</span></div><div id="active-source-content" class="active-source-content"><div class="empty-compact"><span class="empty-icon" aria-hidden="true">◌</span><p>No source yet</p><span>Add text, a file, or a web link to get started.</span></div></div></section>
+              <section class="source-history panel" aria-labelledby="history-heading"><div class="card-heading"><div><div class="eyebrow">YOUR LIBRARY</div><h3 id="history-heading">Recent sources</h3></div><span id="source-count" class="count-pill">0</span></div><div id="source-history-list" class="source-history-list"><p class="subtle-empty">Your sources will appear here.</p></div></section>
+            </div>
+          </div>
+        </section>
+
+        <div id="notice-region" class="notice-region" aria-live="polite" aria-atomic="true"></div>
+        <section id="view" class="module-view" aria-live="polite" aria-busy="false"></section>
+        <footer class="page-footer"><span>Make every study session count.</span><span class="footer-mark">prep-Nerd.ai</span></footer>
+      </main>
+    </div>
+  </div>
+  <noscript><div class="noscript-message">This study workspace needs JavaScript enabled to connect to its tools.</div></noscript>
+</body>
+</html>
