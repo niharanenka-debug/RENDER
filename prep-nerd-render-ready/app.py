@@ -4,7 +4,7 @@ Each browser receives a signed, anonymous workspace cookie. This is workspace
 isolation, not user authentication: possession of the cookie grants access.
 """
 from __future__ import annotations
-
+from authlib.integrations.flask_client import OAuth
 import io
 import logging
 import os
@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, jsonify, redirect, render_template, request, session
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 from core.ai import AIError, GeminiService
@@ -42,11 +42,32 @@ app.config.update(
 )
 app.logger.setLevel(logging.INFO)
 db = Database(DATABASE_PATH)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+GOOGLE_CONFIGURED = all((
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URI,
+))
 
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
+)
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template(
+        "index.html",
+        google_user=session.get("google_profile"),
+        google_configured=GOOGLE_CONFIGURED,
+    )
 
 # A deliberately lightweight per-IP request limiter. This is a first-line
 # abuse guard, not a substitute for a production edge/WAF limit.
@@ -67,9 +88,70 @@ def _safe_error(message: str, status: int):
 
 
 def _owner_id() -> str:
+    if session.get("google_user_id"):
+        return session["google_user_id"]
     if "workspace_id" not in session:
         session["workspace_id"] = str(uuid4())
     return session["workspace_id"]
+    
+@app.get("/auth/google/login")
+def google_login():
+    if not GOOGLE_CONFIGURED:
+        return (
+            "Google sign-in is not configured. Add GOOGLE_CLIENT_ID, "
+            "GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in Render.",
+            503,
+        )
+
+    # Ensure an anonymous workspace exists so it can be moved to the new account.
+    _owner_id()
+    return google.authorize_redirect(GOOGLE_REDIRECT_URI)
+
+
+@app.get("/auth/google/callback")
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        profile = token.get("userinfo") or {}
+    except Exception as exc:
+        app.logger.warning("Google sign-in failed: %s", type(exc).__name__)
+        return "Google sign-in failed. Please try again.", 400
+
+    google_sub = profile.get("sub")
+    email = profile.get("email")
+    if not google_sub or not email or profile.get("email_verified") is not True:
+        return "Google did not return a verified email address.", 403
+
+    owner_id = db.register_google_user(
+        str(google_sub),
+        str(email),
+        str(profile.get("name") or ""),
+        str(profile.get("picture") or ""),
+    )
+
+    # Transfer this browser's guest data only when it is signing into an account
+    # for the first time in the current session.
+    old_workspace = session.get("workspace_id")
+    if old_workspace and not session.get("google_user_id"):
+        db.transfer_workspace(old_workspace, owner_id)
+
+    session["google_user_id"] = owner_id
+    session["google_profile"] = {
+        "email": str(email),
+        "name": str(profile.get("name") or email),
+        "picture": str(profile.get("picture") or ""),
+    }
+    session.pop("csrf_token", None)
+    return redirect("/")
+
+
+@app.get("/auth/google/logout")
+def google_logout():
+    session.pop("google_user_id", None)
+    session.pop("google_profile", None)
+    session.pop("active_source_id", None)
+    session.pop("csrf_token", None)
+    return redirect("/")
 
 
 def _csrf_token() -> str:
