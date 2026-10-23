@@ -29,7 +29,23 @@
       <header class="topbar">
         <div class="mobile-brand"><div class="brand-mark" aria-hidden="true">pN</div><span>prep-Nerd<span class="brand-ai">.ai</span></span></div>
         <div class="topbar-context"><span class="live-dot" aria-hidden="true"></span><span id="top-source-label">No active source</span></div>
-        <div class="topbar-right"><span id="ai-status" class="status-chip" role="status">Checking AI setup…</span><button id="mobile-nav-toggle" class="icon-button mobile-menu-button" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Toggle navigation"><span aria-hidden="true">☰</span></button></div>
+    <div class="topbar-right">
+  <span id="ai-status" class="status-chip" role="status">Checking AI setup…</span>
+
+  {% if google_configured %}
+    {% if google_user %}
+      <span class="status-chip">Signed in: {{ google_user.name or google_user.email }}</span>
+      <a class="button button-secondary" href="/auth/google/logout">Sign out</a>
+    {% else %}
+      <a class="button button-secondary" href="/auth/google/login">Sign in with Google</a>
+    {% endif %}
+  {% endif %}
+
+  <button id="mobile-nav-toggle" class="icon-button mobile-menu-button"
+          type="button" aria-expanded="false" aria-controls="main-nav"
+          aria-label="Toggle navigation"><span aria-hidden="true">☰</span></button>
+</div>
+
       </header>
 
       <main id="main-content" class="main-content">
