@@ -3,13 +3,13 @@
 
   const API = '/api';
   const navItems = [
-    ['dashboard', 'Dashboard', '⌂'], ['summarizer', 'Summarizer', '▤'], ['flashcards', 'Flashcards', '▧'],
-    ['chat', 'Study Chat', '◌'], ['quiz', 'Quiz', '✓'], ['mock_exam', 'Mock Exam', '◷'], ['mistakes', 'Mistake Notebook', '↺']
+    ['dashboard', 'Dashboard', '⌂'], ['summarizer', 'Summarizer', '▤'], ['notes_generator', 'Notes Generator', '✎'],
+    ['chat', 'Study Chat', '◌'], ['mock_exam', 'Mock Exam', '◷'], ['mistakes', 'Mistake Notebook', '↺']
   ];
   const allowedCounts = [5, 10, 15, 20, 25];
   const state = {
     csrf: '', bootstrap: null, page: 'dashboard', artifacts: [], mistakes: [],
-    artifactKind: '', loading: false, chatMessages: [], quiz: null, flash: { artifact: null, index: 0, flipped: false },
+    artifactKind: '', loading: false, chatMessages: [], assessment: null,
     examTimer: null, examSeconds: 0, noticeTimer: null
   };
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -94,8 +94,7 @@
     const fingerprint = source => source ? `${source.id}|${source.kind}|${source.source_ref || ''}` : '';
     if (state.bootstrap && fingerprint(previous) !== fingerprint(next)) {
       state.chatMessages = [];
-      state.quiz = null;
-      state.flash = { artifact: null, index: 0, flipped: false };
+      state.assessment = null;
       if (state.examTimer) { clearInterval(state.examTimer); state.examTimer = null; }
     }
     state.bootstrap = data;
@@ -277,12 +276,10 @@
     if (state.page === 'mistakes') {
       await refreshBootstrap();
       state.mistakes = Array.isArray(state.bootstrap.mistakes) ? state.bootstrap.mistakes : [];
-    } else if (['summarizer', 'flashcards', 'quiz', 'mock_exam'].includes(state.page)) {
-      if (state.page === 'summarizer') await refreshSummaries();
-      else {
-        const kind = state.page === 'mock_exam' ? 'mock_exam' : state.page === 'flashcards' ? 'flashcards' : 'quiz';
-        await refreshArtifacts(kind);
-      }
+    } else if (['summarizer', 'notes_generator'].includes(state.page)) {
+      await refreshSummaries();
+    } else if (state.page === 'mock_exam') {
+      await refreshArtifacts('mock_exam');
     }
   }
   function pageTitle(kicker, title, description) {
@@ -305,7 +302,7 @@
   }
   function renderDashboard(view) {
     const source = activeSource();
-    const artifacts = Array.isArray(state.bootstrap?.artifacts) ? state.bootstrap.artifacts : [];
+    const artifacts = (Array.isArray(state.bootstrap?.artifacts) ? state.bootstrap.artifacts : []).filter(item => !['quiz', 'flashcards'].includes(item.kind));
     const mistakes = Array.isArray(state.bootstrap?.mistakes) ? state.bootstrap.mistakes : [];
     append(view, pageTitle('YOUR STUDY SPACE', 'Make your next session count.', 'Everything you need to understand, remember, and prepare—grounded in your own material.'));
     const hero = node('section', 'dashboard-hero');
@@ -313,7 +310,7 @@
     view.append(hero);
     const stats = node('div', 'stats-grid');
     const activeMistakes = mistakes.filter(item => (item.status || 'open') !== 'resolved').length;
-    [[source ? '1' : '0', 'Active source', source ? source.kind || 'source selected' : 'Ready for your first source'], [String(artifacts.length), 'Study artifacts', 'Saved summaries, decks & practice'], [String(activeMistakes), 'To review', 'Open items in your notebook']].forEach(([value, label, caption]) => {
+    [[source ? '1' : '0', 'Active source', source ? source.kind || 'source selected' : 'Ready for your first source'], [String(artifacts.length), 'Study artifacts', 'Saved notes, summaries & exams'], [String(activeMistakes), 'To review', 'Open items in your notebook']].forEach(([value, label, caption]) => {
       const box = node('div', 'stat-card');
       append(box, node('div', 'stat-value', value), node('div', 'stat-label', label), node('div', 'stat-caption', caption)); stats.append(box);
     });
@@ -323,7 +320,8 @@
       append(view, sectionHeading('Recently saved', 'Keep your progress going'));
       const recent = node('div', 'recent-artifacts');
       artifacts.slice(0, 4).forEach(item => {
-        const row = button('', 'recent-artifact', () => switchPage(item.kind === 'flashcards' ? 'flashcards' : item.kind === 'quiz' ? 'quiz' : 'summarizer'));
+        const target = item.kind === 'mock_exam' ? 'mock_exam' : item.kind === 'notes' ? 'notes_generator' : 'summarizer';
+        const row = button('', 'recent-artifact', () => switchPage(target));
         append(row, node('span', 'artifact-icon', artifactIcon(item.kind)), node('span', 'recent-artifact-copy', node('strong', '', item.title || 'Untitled artifact'), node('small', '', `${item.kind || 'study item'}${item.created_at ? ` · ${displayDate(item.created_at)}` : ''}`)), node('span', 'row-arrow', '↗'));
         recent.append(row);
       }); view.append(recent);
@@ -336,10 +334,9 @@
   function quickActions() {
     const grid = node('div', 'quick-grid');
     const actions = [
-      ['summarizer', 'Summarize & make notes', 'Turn dense material into a clear, useful study guide.', '▤'],
-      ['flashcards', 'Build flashcards', 'Practice active recall, one card at a time.', '▧'],
+      ['summarizer', 'Summarize material', 'Turn a source into a clear, useful study guide.', '▤'],
+      ['notes_generator', 'Generate topic notes', 'Choose a notes style and length for any topic.', '✎'],
       ['chat', 'Ask study chat', 'Get an explanation grounded in your selected source.', '◌'],
-      ['quiz', 'Take a quiz', 'Test what you know and learn from every answer.', '✓'],
       ['mock_exam', 'Run a mock exam', 'Practice under a timer with focused questions.', '◷'],
       ['mistakes', 'Review mistakes', 'Turn missed questions into your next breakthrough.', '↺']
     ];
@@ -355,7 +352,7 @@
     append(box, node('span', 'callout-icon', '✦'), node('div', '', node('strong', '', 'AI key not configured'), node('p', '', 'Study generation and chat will work when an AI key is configured on the backend. No sample output is shown in its place.')));
     return box;
   }
-  function artifactIcon(kind) { return kind === 'flashcards' ? '▧' : kind === 'quiz' || kind === 'mock_exam' ? '✓' : '▤'; }
+  function artifactIcon(kind) { return kind === 'mock_exam' ? '✓' : kind === 'notes' ? '✎' : '▤'; }
   function field(labelText, control, hint) {
     const wrap = node('div', 'field-group');
     append(wrap, node('label', '', labelText), control);
@@ -373,12 +370,15 @@
     select.value = String(selected);
   }
   async function generate(action, options = {}) {
-    if (!hasSource()) { setNotice('Add or activate a source above before generating study material.', 'error', true); return null; }
+    const topicOnlyNotes = action === 'notes' && typeof options.topic === 'string' && !!options.topic.trim();
+    if (!hasSource() && !topicOnlyNotes) { setNotice('Add or activate a source above before generating this material.', 'error', true); return null; }
     setBusy(true);
     try {
-      const data = await request('/generate', { method: 'POST', body: JSON.stringify({ action, style: options.style || 'Key Takeaways', difficulty: options.difficulty || 'Medium', count: Number(options.count || 10), depth: options.depth || 'Standard', title: options.title || '' }) }, true);
+      const payload = { action, style: options.style || 'Key Takeaways', difficulty: options.difficulty || 'Medium', count: Number(options.count || 10), depth: options.depth || 'Standard', title: options.title || '' };
+      if (topicOnlyNotes) { payload.topic = options.topic.trim(); payload.size = options.size || 'Medium'; }
+      const data = await request('/generate', { method: 'POST', body: JSON.stringify(payload) }, true);
       await refreshBootstrap();
-      const kind = action === 'summary' || action === 'notes' ? 'summary' : action === 'flashcards' ? 'flashcards' : action === 'mock_exam' ? 'mock_exam' : 'quiz';
+      const kind = action === 'summary' || action === 'notes' ? 'summary' : 'mock_exam';
       if (kind === 'summary') await refreshSummaries(); else await refreshArtifacts(kind);
       renderPage();
       setNotice(`${data.artifact?.title || 'Study material'} is ready and saved.`, 'success');
@@ -435,68 +435,64 @@
     document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
   }
   function emptyPrompt(title, detail) { const box = node('div', 'empty-state'); append(box, node('span', 'empty-illustration', '✦'), node('strong', '', title), node('p', '', detail)); return box; }
-  function cardsFrom(payload) {
-    if (Array.isArray(payload)) return payload;
-    if (payload && typeof payload === 'object') return payload.cards || payload.flashcards || payload.items || [];
-    return [];
-  }
-  function renderFlashcards(view) {
-    append(view, pageTitle('ACTIVE RECALL', 'Flashcards', 'Practice retrieval, build confidence, and rate each card as you go.'));
-    const generator = node('section', 'generator-panel panel');
-    const form = node('div', 'generator-controls compact-controls');
-    const count = selectControl(allowedCounts.map(n => [String(n), String(n)]), '10');
-    const difficulty = selectControl([['Easy', 'Easy'], ['Medium', 'Medium'], ['Hard', 'Hard']], 'Medium');
-    const title = node('input', 'control-input'); title.type = 'text'; title.placeholder = 'Optional deck title'; title.maxLength = 180;
-    append(form, field('Number of cards', count), field('Difficulty', difficulty), field('Deck title', title));
-    append(generator, form, node('div', 'generator-action-row', actionButton('Generate flashcard deck', () => generate('flashcards', { count: count.value, difficulty: difficulty.value, title: title.value }), !hasSource())));
-    view.append(generator);
-    if (!hasSource()) view.append(noSourceMessage());
-    const artifact = state.flash.artifact || state.artifacts[0];
-    if (!artifact) { if (hasSource()) view.append(emptyPrompt('Build your first deck', 'Cards are created from your active source, never from sample material.')); return; }
-    state.flash.artifact = artifact;
-    const cards = cardsFrom(artifactPayload(artifact));
-    if (!cards.length) { view.append(emptyPrompt('This deck has no cards yet', 'Generate a new deck from your active source.')); return; }
-    state.flash.index = Math.min(state.flash.index, cards.length - 1);
-    const index = state.flash.index;
-    const card = cards[index] || {};
-    const shell = node('section', 'flash-study');
-    const top = node('div', 'flash-progress-row');
-    append(top, node('span', 'eyebrow', artifact.title || 'FLASHCARD DECK'), node('span', 'flash-count', `${index + 1} / ${cards.length}`));
-    const progress = node('div', 'progress-track'); const fill = node('span', 'progress-fill'); fill.style.width = `${((index + 1) / cards.length) * 100}%`; progress.append(fill);
-    const cardButton = button('', `flashcard${state.flash.flipped ? ' is-flipped' : ''}`, () => { state.flash.flipped = !state.flash.flipped; renderPage(); });
-    cardButton.setAttribute('aria-label', state.flash.flipped ? 'Show question' : 'Flip to reveal answer');
-    append(cardButton, node('span', 'flashcard-label', state.flash.flipped ? 'ANSWER' : 'QUESTION'), node('span', 'flashcard-copy', cardText(card, state.flash.flipped)), node('span', 'flashcard-flip-hint', 'Click or press Enter to flip'));
-    cardButton.addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); cardButton.click(); } });
-    const navigation = node('div', 'flash-navigation');
-    navigation.append(button('← Previous', 'button button-secondary', () => moveCard(-1, cards.length), { disabled: index === 0 }));
-    navigation.append(button('Next →', 'button button-secondary', () => moveCard(1, cards.length), { disabled: index === cards.length - 1 }));
-    const ratings = node('div', 'rating-row');
-    append(ratings, node('p', 'rating-prompt', 'How well did you recall it?'));
-    [['Again', 'rating-again'], ['Hard', 'rating-hard'], ['Good', 'rating-good'], ['Easy', 'rating-easy']].forEach(([label, css]) => ratings.append(button(label, `rating-button ${css}`, () => rateCard(label, index, cards), { disabled: !state.flash.flipped })));
-    append(shell, top, progress, cardButton, navigation, ratings);
-    view.append(shell);
-    if (!hasSource()) view.append(noSourceMessage());
-  }
-  function cardText(card, answer) {
-    if (typeof card === 'string') return card;
-    const keys = answer ? ['back', 'answer', 'definition', 'a'] : ['front', 'question', 'prompt', 'term', 'q'];
-    for (const key of keys) if (card && card[key] !== undefined) return String(card[key]);
-    return card ? jsonText(card) : '';
-  }
-  function moveCard(delta, total) { state.flash.index = Math.max(0, Math.min(total - 1, state.flash.index + delta)); state.flash.flipped = false; renderPage(); }
-  async function rateCard(rating, index, cards) {
-    const artifact = state.flash.artifact;
-    const payload = artifactPayload(artifact);
-    const nextCards = cards.map((card, i) => i === index ? { ...card, rating, review_count: Number(card.review_count || 0) + 1, last_reviewed: new Date().toISOString() } : card);
-    let updated;
-    if (Array.isArray(payload)) updated = nextCards;
-    else updated = { ...(payload && typeof payload === 'object' ? payload : {}), cards: nextCards };
-    try {
-      await request(`/artifacts/${encodeURIComponent(artifact.id)}`, { method: 'PATCH', body: JSON.stringify({ title: artifact.title, payload: updated }) }, true);
-      await afterMutation({ kind: 'flashcards' });
-      state.flash.artifact = state.artifacts.find(a => String(a.id) === String(artifact.id)) || state.artifacts[0];
-      setNotice(`Marked ${rating.toLowerCase()}. Your deck is saved.`, 'success');
-    } catch (error) { setNotice(error.message, 'error', true); }
+  function renderNotesGenerator(view) {
+    append(view, pageTitle('NOTES GENERATOR', 'Notes from any topic', 'Type a topic, choose the style and length, and generate notes without adding a source.'));
+    const panel = node('section', 'generator-panel panel');
+    const form = node('div', 'generator-controls');
+    const topic = node('input', 'control-input');
+    topic.type = 'text';
+    topic.maxLength = 300;
+    topic.placeholder = 'e.g. Photosynthesis, SQL joins, or World War I';
+    topic.setAttribute('aria-label', 'Topic name');
+
+    const style = selectControl([
+      ['Structured study notes', 'Structured study notes'],
+      ['Concise revision notes', 'Concise revision notes'],
+      ['Detailed lecture notes', 'Detailed lecture notes'],
+      ['Exam-focused notes', 'Exam-focused notes'],
+      ['Beginner-friendly notes', 'Beginner-friendly notes'],
+      ['Cornell notes', 'Cornell notes'],
+      ['Mind-map-style outline', 'Mind-map-style outline'],
+      ['Custom instructions', 'Custom instructions']
+    ], 'Structured study notes');
+    const size = selectControl([
+      ['Brief', 'Brief (~300 words)'],
+      ['Short', 'Short (~600 words)'],
+      ['Medium', 'Medium (~1,000 words)'],
+      ['Detailed', 'Detailed (~1,800 words)'],
+      ['Comprehensive', 'Comprehensive (~3,000 words)']
+    ], 'Medium');
+    const custom = node('input', 'control-input');
+    custom.type = 'text';
+    custom.maxLength = 500;
+    custom.placeholder = 'e.g. Use question-and-answer format with examples';
+    custom.setAttribute('aria-label', 'Custom notes style instructions');
+    const customField = field('Custom style instructions', custom);
+    customField.hidden = true;
+    style.addEventListener('change', () => { customField.hidden = style.value !== 'Custom instructions'; });
+
+    append(form, field('Topic name', topic), field('Preferred notes style', style), field('Notes length', size), customField);
+    const generateButton = actionButton('Generate notes', async () => {
+      const preferredStyle = style.value === 'Custom instructions' ? custom.value.trim() : style.value;
+      await generate('notes', { topic: topic.value.trim(), style: preferredStyle, size: size.value, title: topic.value.trim() });
+    }, true);
+    const updateDisabled = () => {
+      generateButton.disabled = !topic.value.trim() || (style.value === 'Custom instructions' && !custom.value.trim());
+    };
+    topic.addEventListener('input', updateDisabled);
+    custom.addEventListener('input', updateDisabled);
+    style.addEventListener('change', updateDisabled);
+    append(panel, form, node('div', 'generator-action-row', generateButton));
+    view.append(panel);
+
+    const savedNotes = state.artifacts.find(item => item.kind === 'notes');
+    if (savedNotes) {
+      append(view, sectionHeading('SAVED NOTES', savedNotes.title || 'Your notes'));
+      view.append(editableArtifact(savedNotes));
+    } else {
+      view.append(emptyPrompt('Your notes will appear here', 'Enter a topic and generate your first set of notes.'));
+    }
+    if (!state.bootstrap?.ai_configured) view.append(aiMissingCallout());
   }
   function renderChat(view) {
     append(view, pageTitle('GROUNDED STUDY CHAT', 'Ask your source', 'Explore tricky ideas and get answers grounded in the material you selected.'));
@@ -534,42 +530,39 @@
     if (payload && typeof payload === 'object') return payload.questions || payload.items || payload.problems || [];
     return [];
   }
-  function renderAssessment(view, exam = false) {
-    const page = exam ? 'MOCK EXAM' : 'KNOWLEDGE CHECK';
-    append(view, pageTitle(page, exam ? 'Mock exam' : 'Quiz', exam ? 'A focused timed practice run, built from your active source.' : 'Check your understanding, one question at a time.'));
+  function renderMockExam(view) {
+    append(view, pageTitle('MOCK EXAM', 'Mock exam', 'A focused timed practice run, built from your active source.'));
     const panel = node('section', 'generator-panel panel');
     const controls = node('div', 'generator-controls compact-controls');
     const count = selectControl(allowedCounts.map(n => [String(n), `${n} questions`]), '10');
     const difficulty = selectControl([['Easy', 'Easy'], ['Medium', 'Medium'], ['Hard', 'Hard']], 'Medium');
     const duration = selectControl([[10, '10 minutes'], [20, '20 minutes'], [30, '30 minutes'], [45, '45 minutes'], [60, '60 minutes']], '30');
-    append(controls, field('Question count', count), field('Difficulty', difficulty));
-    if (exam) append(controls, field('Time limit', duration));
-    const title = node('input', 'control-input'); title.type = 'text'; title.placeholder = exam ? 'Optional exam title' : 'Optional quiz title'; title.maxLength = 180;
+    append(controls, field('Question count', count), field('Difficulty', difficulty), field('Time limit', duration));
+    const title = node('input', 'control-input'); title.type = 'text'; title.placeholder = 'Optional exam title'; title.maxLength = 180;
     append(controls, field('Title', title));
-    const action = exam ? 'mock_exam' : 'quiz';
-    append(panel, controls, node('div', 'generator-action-row', actionButton(exam ? 'Create mock exam' : 'Create quiz', async () => {
-      const artifact = await generate(action, { count: count.value, difficulty: difficulty.value, title: title.value });
-      if (artifact) { state.quiz = { artifact, answers: {}, submitted: false, result: null, duration: exam ? Number(duration.value) * 60 : 0 }; renderPage(); }
+    append(panel, controls, node('div', 'generator-action-row', actionButton('Create mock exam', async () => {
+      const artifact = await generate('mock_exam', { count: count.value, difficulty: difficulty.value, title: title.value });
+      if (artifact) { state.assessment = { artifact, answers: {}, submitted: false, result: null, duration: Number(duration.value) * 60 }; renderPage(); }
     }, !hasSource())));
     view.append(panel);
     if (!hasSource()) view.append(noSourceMessage());
-    const current = state.quiz && state.quiz.artifact && state.quiz.artifact.kind === action ? state.quiz : null;
+    const current = state.assessment?.artifact?.kind === 'mock_exam' ? state.assessment : null;
     const artifact = current?.artifact || state.artifacts[0];
-    if (!artifact) { if (hasSource()) view.append(emptyPrompt(exam ? 'Ready when you are' : 'Make a quiz to test yourself', exam ? 'Choose a question count and time limit to get started.' : 'Choose a question count and difficulty to get started.')); return; }
-    if (!state.quiz || state.quiz.artifact.id !== artifact.id) state.quiz = { artifact, answers: {}, submitted: false, result: null, duration: 0 };
-    renderQuestionSet(view, state.quiz, exam);
+    if (!artifact) { if (hasSource()) view.append(emptyPrompt('Ready when you are', 'Choose a question count and time limit to get started.')); return; }
+    if (!state.assessment || state.assessment.artifact.id !== artifact.id) state.assessment = { artifact, answers: {}, submitted: false, result: null, duration: 0 };
+    renderQuestionSet(view, state.assessment);
   }
-  function renderQuestionSet(view, session, exam) {
+  function renderQuestionSet(view, session) {
     const questions = questionsFrom(artifactPayload(session.artifact));
     const wrap = node('section', 'question-set');
     const head = node('div', 'question-set-head');
-    append(head, node('h2', '', session.artifact.title || (exam ? 'Mock exam' : 'Quiz')));
-    if (exam && session.duration && !session.submitted) {
+    append(head, node('h2', '', session.artifact.title || 'Mock exam'));
+    if (session.duration && !session.submitted) {
       const timer = node('div', 'exam-timer', formatTime(state.examSeconds || session.duration)); timer.setAttribute('aria-live', 'polite'); head.append(timer);
       if (!state.examTimer) startExamTimer(timer, session);
     }
     append(wrap, head, node('p', 'question-instructions', session.submitted ? 'Review each question and its explanation below.' : `Select one answer for each of ${questions.length} questions.`));
-    if (!questions.length) { wrap.append(emptyPrompt('No questions found in this artifact.', 'Generate another assessment from your active source.')); view.append(wrap); return; }
+    if (!questions.length) { wrap.append(emptyPrompt('No questions found in this exam.', 'Generate another mock exam from your active source.')); view.append(wrap); return; }
     questions.forEach((question, index) => {
       const card = node('fieldset', `question-card${session.submitted ? ' question-reviewed' : ''}`);
       const legend = node('legend', 'question-legend', `${index + 1}. ${questionText(question)}`);
@@ -598,7 +591,7 @@
       wrap.append(card);
     });
     if (!session.submitted) {
-      const submit = actionButton(exam ? 'Submit exam' : 'Submit quiz', () => gradeAssessment(session), false);
+      const submit = actionButton('Submit exam', () => gradeAssessment(session), false);
       const unanswered = questions.length - Object.keys(session.answers).length;
       const footer = node('div', 'assessment-footer');
       append(footer, node('span', 'subtle-text', `${unanswered} unanswered`), submit);
@@ -641,7 +634,7 @@
   function startExamTimer(element, session) {
     state.examSeconds = session.duration;
     state.examTimer = window.setInterval(() => {
-      if (state.quiz !== session || session.submitted) { clearInterval(state.examTimer); state.examTimer = null; return; }
+      if (state.assessment !== session || session.submitted) { clearInterval(state.examTimer); state.examTimer = null; return; }
       state.examSeconds -= 1;
       const timer = $('.exam-timer'); if (timer) timer.textContent = formatTime(state.examSeconds);
       if (state.examSeconds <= 0) { clearInterval(state.examTimer); state.examTimer = null; gradeAssessment(session); }
@@ -662,7 +655,7 @@
   function renderMistakes(view) {
     append(view, pageTitle('LEARN FROM EVERY MISS', 'Mistake notebook', 'A low-pressure place to revisit questions and make the learning stick.'));
     const mistakes = state.mistakes || [];
-    if (!mistakes.length) { view.append(emptyPrompt('No mistakes to review yet', 'After you submit a quiz or mock exam, missed questions appear here.')); return; }
+    if (!mistakes.length) { view.append(emptyPrompt('No mistakes to review yet', 'After you submit a mock exam, missed questions appear here.')); return; }
     const filters = node('div', 'mistake-summary');
     const open = mistakes.filter(m => (m.status || m.payload?.status || 'Needs More Practice') === 'Needs More Practice').length;
     append(filters, node('span', '', `${mistakes.length} saved`), node('span', '', `${open} open`)); view.append(filters);
@@ -700,10 +693,9 @@
     $$('#main-nav [data-page]').forEach(link => { const active = link.dataset.page === state.page; link.classList.toggle('nav-active', active); if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
     switch (state.page) {
       case 'summarizer': renderSummarizer(view); break;
-      case 'flashcards': renderFlashcards(view); break;
+      case 'notes_generator': renderNotesGenerator(view); break;
       case 'chat': renderChat(view); break;
-      case 'quiz': renderAssessment(view, false); break;
-      case 'mock_exam': renderAssessment(view, true); break;
+      case 'mock_exam': renderMockExam(view); break;
       case 'mistakes': renderMistakes(view); break;
       default: renderDashboard(view);
     }
