@@ -446,15 +446,10 @@
     topic.setAttribute('aria-label', 'Topic name');
 
     const style = selectControl([
-      ['Structured study notes', 'Structured study notes'],
-      ['Concise revision notes', 'Concise revision notes'],
-      ['Detailed lecture notes', 'Detailed lecture notes'],
-      ['Exam-focused notes', 'Exam-focused notes'],
-      ['Beginner-friendly notes', 'Beginner-friendly notes'],
-      ['Cornell notes', 'Cornell notes'],
-      ['Mind-map-style outline', 'Mind-map-style outline'],
-      ['Custom instructions', 'Custom instructions']
-    ], 'Structured study notes');
+      ['Textbook-style paragraphs', 'Textbook-style paragraphs'],
+      ['Point-wise structured class notes', 'Point-wise structured class notes'],
+      ['Concise exam revision notes', 'Concise exam revision notes']
+    ], 'Point-wise structured class notes');
     const size = selectControl([
       ['Brief', 'Brief (~300 words)'],
       ['Short', 'Short (~600 words)'],
@@ -462,26 +457,12 @@
       ['Detailed', 'Detailed (~1,800 words)'],
       ['Comprehensive', 'Comprehensive (~3,000 words)']
     ], 'Medium');
-    const custom = node('input', 'control-input');
-    custom.type = 'text';
-    custom.maxLength = 500;
-    custom.placeholder = 'e.g. Use question-and-answer format with examples';
-    custom.setAttribute('aria-label', 'Custom notes style instructions');
-    const customField = field('Custom style instructions', custom);
-    customField.hidden = true;
-    style.addEventListener('change', () => { customField.hidden = style.value !== 'Custom instructions'; });
-
-    append(form, field('Topic name', topic), field('Preferred notes style', style), field('Notes length', size), customField);
+    append(form, field('Topic name', topic), field('Preferred notes style', style), field('Notes length', size));
     const generateButton = actionButton('Generate notes', async () => {
-      const preferredStyle = style.value === 'Custom instructions' ? custom.value.trim() : style.value;
-      await generate('notes', { topic: topic.value.trim(), style: preferredStyle, size: size.value, title: topic.value.trim() });
+      await generate('notes', { topic: topic.value.trim(), style: style.value, size: size.value, title: topic.value.trim() });
     }, true);
-    const updateDisabled = () => {
-      generateButton.disabled = !topic.value.trim() || (style.value === 'Custom instructions' && !custom.value.trim());
-    };
+    const updateDisabled = () => { generateButton.disabled = !topic.value.trim(); };
     topic.addEventListener('input', updateDisabled);
-    custom.addEventListener('input', updateDisabled);
-    style.addEventListener('change', updateDisabled);
     append(panel, form, node('div', 'generator-action-row', generateButton));
     view.append(panel);
 
